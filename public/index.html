@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Puti-AI 磁碟空間分析工具 | 本機磁碟空間與檔案類型分析工具</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Noto+Sans+TC:wght@300;400;700&display=swap" rel="stylesheet">
+  <!-- 引入 Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="glass-bg"></div>
+  <div class="app-container">
+    <header style="position: relative; display: flex; flex-direction: column; align-items: center;">
+      <div class="header-top-row" style="display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 1240px; margin-bottom: 8px;">
+        <div class="logo" style="margin-bottom: 0;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="logo-icon">
+            <path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path>
+            <path d="M22 12A10 10 0 0 0 12 2v10z"></path>
+          </svg>
+          <h1>Puti-AI 磁碟空間分析工具</h1>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <a href="instructions.html" target="_blank" class="btn btn-browse" style="padding: 8px 16px; font-size: 0.85rem; border-radius: 8px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; text-decoration: none;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+            <span>使用說明</span>
+          </a>
+          <button type="button" id="btn-shutdown" class="btn btn-secondary" style="padding: 8px 16px; font-size: 0.85rem; border-radius: 8px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;">
+              <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+              <line x1="12" y1="2" x2="12" y2="12"></line>
+            </svg>
+            <span>關閉工具</span>
+          </button>
+        </div>
+      </div>
+      <p class="subtitle">深入探索本機資料夾大小與檔案類型分佈</p>
+    </header>
+
+    <main>
+      <!-- 輸入控制器 -->
+      <section class="card input-section">
+        <div class="input-group">
+          <label for="folder-path">本機資料夾路徑</label>
+          <div class="input-row">
+            <input type="text" id="folder-path" placeholder="例如：C:\Users\Username\Documents" autocomplete="off" spellcheck="false">
+            <button type="button" id="btn-browse" class="btn btn-browse">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon-folder" style="width: 18px; height: 18px; vertical-align: middle;">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              </svg>
+              <span>瀏覽...</span>
+            </button>
+            <button type="button" id="btn-scan" class="btn btn-primary">
+              <span class="btn-text">開始分析</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-spin hide" id="scan-spinner">
+                <line x1="12" y1="2" x2="12" y2="6"></line>
+                <line x1="12" y1="18" x2="12" y2="22"></line>
+                <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
+                <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+                <line x1="2" y1="12" x2="6" y2="12"></line>
+                <line x1="18" y1="12" x2="22" y2="12"></line>
+                <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
+                <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
+              </svg>
+            </button>
+            <button type="button" id="btn-cancel" class="btn btn-secondary hide">取消</button>
+          </div>
+        </div>
+        <div class="quick-paths">
+          <span class="label">快速連結：</span>
+          <button type="button" class="quick-path-btn" data-path="C:\">C 槽根目錄</button>
+          <button type="button" class="quick-path-btn" data-path="C:\Users">Users 目錄</button>
+          <button type="button" class="quick-path-btn" id="current-project-btn">本專案目錄</button>
+        </div>
+      </section>
+
+      <!-- 即時進度面板 -->
+      <section id="progress-card" class="card progress-section hide">
+        <div class="progress-header">
+          <div class="status-badge pulse">掃描中...</div>
+          <div class="scanned-stats">
+            <div>已掃描檔案：<span id="stat-files" class="number">0</span></div>
+            <div>已掃描資料夾：<span id="stat-folders" class="number">0</span></div>
+          </div>
+        </div>
+        <div class="progress-bar-container">
+          <div class="progress-bar-fill"></div>
+        </div>
+        <div class="current-path-info">
+          <span class="label">目前掃描：</span>
+          <span id="current-path" class="path-text">準備中...</span>
+        </div>
+      </section>
+
+      <!-- 錯誤提示 -->
+      <section id="error-card" class="card error-section hide">
+        <div class="error-content">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="error-icon">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          <div class="error-msg">
+            <h4>發生錯誤</h4>
+            <p id="error-text">無法存取該資料夾，請檢查路徑是否正確。</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 導覽控制列 -->
+      <div id="nav-control-bar" class="card nav-bar-card hide" style="margin-bottom: 20px; display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 12px 20px;">
+        <button type="button" id="btn-nav-back" class="btn btn-secondary-modal" style="padding: 6px 12px; font-size: 0.85rem;" disabled>⬅ 上一頁</button>
+        <button type="button" id="btn-nav-forward" class="btn btn-secondary-modal" style="padding: 6px 12px; font-size: 0.85rem;" disabled>➡ 下一頁</button>
+        <button type="button" id="btn-nav-parent" class="btn btn-secondary-modal" style="padding: 6px 12px; font-size: 0.85rem;">⬆ 往上一層</button>
+        <button type="button" id="btn-nav-root" class="btn btn-secondary-modal" style="padding: 6px 12px; font-size: 0.85rem;">🏠 磁碟根目錄</button>
+        <span style="color: var(--text-muted); font-size: 0.85rem; margin-left: 10px;">目前分析：<span id="nav-current-path" style="color: #0284c7; font-weight: 600; font-family: monospace;">-</span></span>
+      </div>
+
+      <!-- 分析結果區 (預設隱藏，完成時顯示) -->
+      <div id="results-area" class="results-layout hide">
+        
+        <!-- 左側：視覺化圖表 -->
+        <div class="results-left">
+          <!-- 檔案類型佔比 -->
+          <div class="card chart-card">
+            <h3>檔案類型大小佔比</h3>
+            <div class="chart-container">
+              <canvas id="type-chart"></canvas>
+            </div>
+            <!-- 檔案類型圖例清單 -->
+            <div class="type-legend-list" id="type-legend">
+              <!-- JS 動態填入 -->
+            </div>
+          </div>
+
+          <!-- 十大巨無霸檔案 (新加入) -->
+          <div class="card files-card" style="margin-top: 20px;">
+            <h3 style="font-size: 1.15rem; font-weight: 600; margin-bottom: 12px;">十大巨無霸檔案</h3>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 15px;">點擊右側按鈕可在 Windows 檔案總管中定位並選取該檔案。</p>
+            <div id="largest-files-list" style="display: flex; flex-direction: column; gap: 8px;">
+              <!-- JS 動態填入 -->
+            </div>
+          </div>
+        </div>
+
+        <!-- 右側：資料夾清單 -->
+        <div class="results-right">
+          <div class="card list-card">
+            <div class="list-header">
+              <h3>子資料夾大小列表</h3>
+              <span class="total-badge">總計大小：<span id="total-size-badge">0 B</span></span>
+            </div>
+            <p class="list-hint">點擊資料夾名稱可直接深入 (drill down) 分析；點擊標頭可進行排序。</p>
+            <div class="table-container">
+              <table class="folder-table">
+                <thead>
+                  <tr>
+                    <th data-sort="name" class="sortable">資料夾名稱 <span class="sort-icon">↕</span></th>
+                    <th data-sort="size" class="sortable sorted-desc">總大小 <span class="sort-icon">↓</span></th>
+                    <th data-sort="files" class="sortable">檔案數量 <span class="sort-icon">↕</span></th>
+                    <th data-sort="folders" class="sortable">子目錄數 <span class="sort-icon">↕</span></th>
+                  </tr>
+                </thead>
+                <tbody id="folder-list-body">
+                  <!-- JS 動態渲染 -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </main>
+
+    <footer>
+      <p style="margin-bottom: 6px;">屏東縣後庄國小黃朝榮老師作品 | 免費分享，歡迎擴散推廣，嚴禁商用與任何侵權、不尊重著作權的行為</p>
+      <p>更多 Puti-AI 教學工具 <a href="https://padlet.com/clongwh/puti_ai_tools" target="_blank" style="color: #0284c7; text-decoration: underline; font-weight: 600;">點此前往</a></p>
+    </footer>
+  </div>
+
+  <!-- 本機目錄瀏覽 Modal -->
+  <div id="browse-modal" class="modal-overlay hide">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Puti-AI 檔案瀏覽器</h3>
+        <button type="button" id="btn-modal-close" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- 磁碟區選擇 -->
+        <div class="drive-select-row" id="modal-drive-row" style="display: flex; align-items: center; gap: 8px; font-size: 0.95rem; margin-bottom: 5px;">
+          <label for="modal-drive-select" style="font-weight: 600; color: var(--text-muted);">本機磁碟機：</label>
+          <select id="modal-drive-select" class="drive-select" style="background: rgba(0, 0, 0, 0.05); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 12px; color: var(--text-main); font-family: inherit; font-size: 0.9rem; outline: none; cursor: pointer; transition: border-color 0.2s;">
+            <!-- JS 動態填入 -->
+          </select>
+        </div>
+        <!-- 麵包屑路徑 -->
+        <div class="breadcrumbs-container" id="modal-breadcrumbs">
+          <!-- JS 動態渲染 -->
+        </div>
+        <!-- 目錄清單 -->
+        <div class="directories-list-container">
+          <ul id="modal-dirs-list" class="dirs-list">
+            <!-- JS 動態渲染 -->
+          </ul>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="btn-modal-select" class="btn btn-primary">選擇此資料夾</button>
+        <button type="button" id="btn-modal-cancel" class="btn btn-secondary-modal">取消</button>
+      </div>
+    </div>
+  </div>
+  <!-- 引入前端邏輯 -->
+  <script src="app.js"></script>
+</body>
+</html>

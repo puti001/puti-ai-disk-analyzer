@@ -1,0 +1,19 @@
+{
+  "name": "disk-analyzer",
+  "version": "1.0.0",
+  "description": "Puti-AI 磁碟空間分析工具",
+  "main": "server.js",
+  "bin": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "package": "npx pkg . --targets node18-win-x64 --output puti-ai-disk-analyzer.exe"
+  },
+  "pkg": {
+    "assets": [
+      "public/**/*"
+    ]
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

@@ -1,0 +1,10 @@
+# Dependency directories
+node_modules/
+
+# Build outputs
+*.exe
+*.log
+
+# OS metadata
+.DS_Store
+Thumbs.db

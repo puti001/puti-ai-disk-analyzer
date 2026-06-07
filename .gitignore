@@ -8,3 +8,7 @@ node_modules/
 # OS metadata
 .DS_Store
 Thumbs.db
+
+# User private scripts
+教學影片腳本.md
+

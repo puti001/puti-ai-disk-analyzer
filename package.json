@@ -6,7 +6,7 @@
   "bin": "server.js",
   "scripts": {
     "start": "node server.js",
-    "package": "npx pkg . --targets node18-win-x64 --output puti-ai-disk-analyzer.exe"
+    "package": "node build.js"
   },
   "pkg": {
     "assets": [

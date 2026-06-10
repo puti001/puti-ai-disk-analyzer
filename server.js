@@ -242,11 +242,12 @@ function handleScan(req, res) {
       size,
     };
 
-    if (state.largestFiles.length < 10) {
+    const MAX_LARGEST = 500;
+    if (state.largestFiles.length < MAX_LARGEST) {
       state.largestFiles.push(entry);
       state.largestFiles.sort((a, b) => b.size - a.size);
-    } else if (size > state.largestFiles[9].size) {
-      state.largestFiles[9] = entry;
+    } else if (size > state.largestFiles[MAX_LARGEST - 1].size) {
+      state.largestFiles[MAX_LARGEST - 1] = entry;
       state.largestFiles.sort((a, b) => b.size - a.size);
     }
   }

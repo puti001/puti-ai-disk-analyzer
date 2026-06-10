@@ -23,7 +23,7 @@
         </div>
         <div class="header-actions">
           <button type="button" id="btn-shutdown" class="btn btn-ghost" title="關閉工具">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
               <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
               <line x1="12" y1="2" x2="12" y2="12"></line>
             </svg>
@@ -46,7 +46,7 @@
             <span>瀏覽</span>
           </button>
           <button type="button" id="btn-scan" class="btn btn-primary">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" class="btn-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
               <circle cx="11" cy="11" r="8"></circle>
               <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
             </svg>
@@ -54,9 +54,14 @@
           </button>
           <button type="button" id="btn-cancel" class="btn btn-danger hide">取消</button>
         </div>
-        <div class="quick-drives" id="quick-drives">
-          <span class="label">快速選擇：</span>
-          <!-- JS 動態填入磁碟機按鈕 -->
+        <div class="input-bottom-row">
+          <div class="quick-drives" id="quick-drives">
+            <span class="label">磁碟：</span>
+          </div>
+          <div class="scan-history" id="scan-history">
+            <span class="label">歷史：</span>
+            <!-- JS 動態填入 -->
+          </div>
         </div>
       </section>
 
@@ -93,12 +98,23 @@
 
       <!-- 導覽列 -->
       <div id="nav-bar" class="card nav-bar hide">
-        <button type="button" id="btn-nav-parent" class="btn btn-ghost btn-sm">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-            <polyline points="15 18 9 12 15 6"></polyline>
-          </svg>
-          上一層
-        </button>
+        <div class="nav-buttons">
+          <button type="button" id="btn-nav-back" class="btn btn-ghost btn-sm" title="上一頁" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            上一頁
+          </button>
+          <button type="button" id="btn-nav-forward" class="btn btn-ghost btn-sm" title="下一頁" disabled>
+            下一頁
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="9 6 15 12 9 18"></polyline></svg>
+          </button>
+          <button type="button" id="btn-nav-parent" class="btn btn-ghost btn-sm" title="往上一層">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="17 11 12 6 7 11"></polyline><line x1="12" y1="6" x2="12" y2="18"></line></svg>
+            往上一層
+          </button>
+          <button type="button" id="btn-nav-root" class="btn btn-ghost btn-sm" title="磁碟根目錄">
+            🏠 根目錄
+          </button>
+        </div>
         <div class="nav-path" id="nav-current-path">—</div>
         <button type="button" id="btn-rescan" class="btn btn-ghost btn-sm">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
@@ -122,22 +138,19 @@
                 <div class="chart-total-value" id="chart-total">—</div>
               </div>
             </div>
-            <div class="legend-list" id="legend-list">
-              <!-- JS 動態填入 -->
-            </div>
+            <div class="legend-list" id="legend-list"></div>
           </div>
         </div>
 
-        <!-- 右側：十大巨無霸檔案 -->
+        <!-- 右側：大檔案排序 -->
         <div class="results-right">
           <div class="card files-card">
             <div class="files-header">
-              <h3>🏆 十大巨無霸檔案</h3>
+              <h3>📦 大檔案排序</h3>
               <div class="files-toolbar">
                 <label class="checkbox-label" id="select-all-label">
                   <input type="checkbox" id="select-all-cb">
-                  <span class="checkmark"></span>
-                  全選
+                  全選本頁
                 </label>
                 <button type="button" id="btn-delete-selected" class="btn btn-danger btn-sm" disabled>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
@@ -148,8 +161,31 @@
                 </button>
               </div>
             </div>
-            <div class="files-list" id="files-list">
-              <!-- JS 動態填入 -->
+            <!-- 篩選列 -->
+            <div class="files-filter-row">
+              <span class="filter-label">最小檔案大小：</span>
+              <div class="filter-buttons" id="filter-buttons">
+                <button type="button" class="filter-btn active" data-min="0">全部</button>
+                <button type="button" class="filter-btn" data-min="52428800">50 MB</button>
+                <button type="button" class="filter-btn" data-min="104857600">100 MB</button>
+                <button type="button" class="filter-btn" data-min="209715200">200 MB</button>
+                <button type="button" class="filter-btn" data-min="524288000">500 MB</button>
+              </div>
+              <span class="filter-count" id="filter-count"></span>
+            </div>
+            <!-- 檔案清單 -->
+            <div class="files-list" id="files-list"></div>
+            <!-- 分頁控制 -->
+            <div class="pagination" id="pagination">
+              <button type="button" id="btn-page-prev" class="btn btn-ghost btn-sm" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                上一頁
+              </button>
+              <span class="page-info" id="page-info">第 1 頁 / 共 1 頁</span>
+              <button type="button" id="btn-page-next" class="btn btn-ghost btn-sm" disabled>
+                下一頁
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="9 6 15 12 9 18"></polyline></svg>
+              </button>
             </div>
           </div>
         </div>
@@ -172,17 +208,11 @@
       <div class="modal-body">
         <div class="drive-row" id="modal-drive-row">
           <label>磁碟機：</label>
-          <select id="modal-drive-select" class="drive-select">
-            <!-- JS 動態填入 -->
-          </select>
+          <select id="modal-drive-select" class="drive-select"></select>
         </div>
-        <div class="breadcrumbs" id="modal-breadcrumbs">
-          <!-- JS 動態渲染 -->
-        </div>
+        <div class="breadcrumbs" id="modal-breadcrumbs"></div>
         <div class="dirs-container">
-          <ul id="modal-dirs-list" class="dirs-list">
-            <!-- JS 動態渲染 -->
-          </ul>
+          <ul id="modal-dirs-list" class="dirs-list"></ul>
         </div>
       </div>
       <div class="modal-footer">
@@ -201,9 +231,7 @@
       </div>
       <div class="modal-body">
         <p class="confirm-warning">以下檔案將被永久刪除，此操作無法復原：</p>
-        <ul class="confirm-file-list" id="confirm-file-list">
-          <!-- JS 動態填入 -->
-        </ul>
+        <ul class="confirm-file-list" id="confirm-file-list"></ul>
       </div>
       <div class="modal-footer">
         <button type="button" id="btn-confirm-delete" class="btn btn-danger">確認刪除</button>
@@ -212,9 +240,8 @@
     </div>
   </div>
 
-  <!-- Toast 通知 -->
+  <!-- Toast -->
   <div class="toast-container" id="toast-container"></div>
-
   <script src="app.js"></script>
 </body>
 </html>

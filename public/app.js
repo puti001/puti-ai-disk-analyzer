@@ -1,5 +1,6 @@
 /* ============================================================
-   Puti-AI 磁碟分析工具 — 前端核心邏輯 v2.1
+   Puti-AI 磁碟分析工具 — 前端核心邏輯 v3.0
+   新增：導覽歷史、分頁瀏覽、大小篩選、掃描歷史
    純原生 JS，不依賴任何外部函式庫
    ============================================================ */
 
@@ -41,7 +42,6 @@ class PieChart {
     this.animationId = null;
     this.size = 0;
 
-    // hover 互動
     this.canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
     this.canvas.addEventListener('mouseleave', () => {
       this.hoveredIndex = -1;
@@ -56,7 +56,6 @@ class PieChart {
 
   resize() {
     const rect = this.canvas.parentElement.getBoundingClientRect();
-    // 用 width 來決定尺寸（因為 aspect-ratio 保證正方形，但 height 可能還沒算好）
     const size = Math.min(rect.width || 300, 320);
     if (size <= 0) return;
 
@@ -75,8 +74,7 @@ class PieChart {
       const val = fileTypes[key] || 0;
       if (val > 0) {
         this.data.push({
-          key,
-          value: val,
+          key, value: val,
           ratio: totalSize > 0 ? val / totalSize : 0,
           color: PIE_COLORS[key].color,
           label: PIE_COLORS[key].label,
@@ -85,9 +83,7 @@ class PieChart {
     }
     this.totalSize = totalSize;
 
-    // 確保 canvas 尺寸正確（首次渲染時容器剛從 display:none 變可見）
     this.resize();
-    // 再用 rAF 確認 layout 已完成
     requestAnimationFrame(() => {
       this.resize();
       this.animateIn();
@@ -103,7 +99,6 @@ class PieChart {
     const tick = (now) => {
       const elapsed = now - startTime;
       this.animationProgress = Math.min(elapsed / duration, 1);
-      // easeOutCubic
       this.animationProgress = 1 - Math.pow(1 - this.animationProgress, 3);
       this.draw();
       if (this.animationProgress < 1) {
@@ -162,7 +157,6 @@ class PieChart {
       ctx.fill();
       ctx.shadowBlur = 0;
 
-      // 白色間隔線
       ctx.strokeStyle = 'rgba(255,255,255,0.3)';
       ctx.lineWidth = 1;
       ctx.stroke();
@@ -197,10 +191,7 @@ class PieChart {
     let found = -1;
     for (let i = 0; i < this.data.length; i++) {
       cumAngle += this.data[i].ratio * Math.PI * 2;
-      if (angle <= cumAngle) {
-        found = i;
-        break;
-      }
+      if (angle <= cumAngle) { found = i; break; }
     }
 
     if (found !== this.hoveredIndex) {
@@ -217,12 +208,25 @@ class App {
     this.scanning = false;
     this.currentPath = '';
     this.selectedFiles = new Set();
-    this.largestFiles = [];
+    this.allLargestFiles = []; // 所有大檔案（server 回傳，最多 500 筆）
+    this.filteredFiles = [];   // 篩選後
     this.pieChart = null;
+
+    // 分頁
+    this.pageSize = 10;
+    this.currentPage = 0;
+
+    // 篩選
+    this.minSizeFilter = 0;
+
+    // 導覽歷史
+    this.navHistory = [];
+    this.navIndex = -1;
 
     this.initElements();
     this.bindEvents();
     this.loadDrives();
+    this.loadScanHistory();
     this.startHeartbeat();
   }
 
@@ -247,6 +251,13 @@ class App {
     this.elChartTotal = $('#chart-total');
     this.elSelectAllCb = $('#select-all-cb');
     this.elBtnDeleteSelected = $('#btn-delete-selected');
+    this.elBtnNavBack = $('#btn-nav-back');
+    this.elBtnNavForward = $('#btn-nav-forward');
+    this.elBtnPagePrev = $('#btn-page-prev');
+    this.elBtnPageNext = $('#btn-page-next');
+    this.elPageInfo = $('#page-info');
+    this.elFilterCount = $('#filter-count');
+    this.elScanHistory = $('#scan-history');
   }
 
   bindEvents() {
@@ -257,11 +268,30 @@ class App {
       if (e.key === 'Enter') this.startScan();
     });
 
+    // 導覽
+    this.elBtnNavBack.addEventListener('click', () => this.navigateBack());
+    this.elBtnNavForward.addEventListener('click', () => this.navigateForward());
     $('#btn-nav-parent').addEventListener('click', () => this.navigateToParent());
+    $('#btn-nav-root').addEventListener('click', () => this.navigateToRoot());
     $('#btn-rescan').addEventListener('click', () => this.startScan());
 
+    // 檔案選取
     this.elSelectAllCb.addEventListener('change', () => this.toggleSelectAll());
     this.elBtnDeleteSelected.addEventListener('click', () => this.showDeleteConfirm());
+
+    // 分頁
+    this.elBtnPagePrev.addEventListener('click', () => this.goPage(this.currentPage - 1));
+    this.elBtnPageNext.addEventListener('click', () => this.goPage(this.currentPage + 1));
+
+    // 篩選
+    $('#filter-buttons').addEventListener('click', (e) => {
+      const btn = e.target.closest('.filter-btn');
+      if (!btn) return;
+      const minVal = parseInt(btn.dataset.min) || 0;
+      this.setMinSizeFilter(minVal);
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
 
     // Browse modal
     $('#btn-modal-close').addEventListener('click', () => this.closeBrowseModal());
@@ -315,8 +345,77 @@ class App {
     }
   }
 
+  // ===== 掃描歷史 (localStorage) =====
+  loadScanHistory() {
+    try {
+      const data = JSON.parse(localStorage.getItem('disk-analyzer-history') || '[]');
+      this.scanHistory = data.slice(0, 10);
+    } catch {
+      this.scanHistory = [];
+    }
+    this.renderScanHistory();
+  }
+
+  saveScanHistory(pathStr, totalSize) {
+    // 移除舊的相同路徑
+    this.scanHistory = this.scanHistory.filter(h => h.path.toLowerCase() !== pathStr.toLowerCase());
+    // 加到最前面
+    this.scanHistory.unshift({
+      path: pathStr,
+      totalSize,
+      lastScanned: new Date().toISOString(),
+    });
+    // 最多 10 筆
+    this.scanHistory = this.scanHistory.slice(0, 10);
+    localStorage.setItem('disk-analyzer-history', JSON.stringify(this.scanHistory));
+    this.renderScanHistory();
+  }
+
+  renderScanHistory() {
+    const container = this.elScanHistory;
+    // 保留 label span
+    const label = container.querySelector('.label');
+    container.innerHTML = '';
+    if (label) container.appendChild(label);
+
+    if (!this.scanHistory.length) {
+      container.classList.add('hide');
+      return;
+    }
+    container.classList.remove('hide');
+
+    this.scanHistory.forEach(h => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'history-btn';
+      // 顯示最後一段路徑
+      const shortName = h.path.split('\\').filter(Boolean).pop() || h.path;
+      btn.title = h.path + ' (' + formatSize(h.totalSize) + ')';
+      btn.textContent = shortName;
+      btn.addEventListener('click', () => {
+        this.elFolderPath.value = h.path;
+        this.startScan();
+      });
+
+      // 刪除按鈕
+      const delBtn = document.createElement('span');
+      delBtn.className = 'history-del';
+      delBtn.textContent = '×';
+      delBtn.title = '移除';
+      delBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.scanHistory = this.scanHistory.filter(x => x.path !== h.path);
+        localStorage.setItem('disk-analyzer-history', JSON.stringify(this.scanHistory));
+        this.renderScanHistory();
+      });
+      btn.appendChild(delBtn);
+
+      container.appendChild(btn);
+    });
+  }
+
   // ===== 掃描 =====
-  startScan() {
+  startScan(pushHistory = true) {
     const targetPath = this.elFolderPath.value.trim();
     if (!targetPath) {
       this.showToast('請輸入或選擇資料夾路徑', 'error');
@@ -330,7 +429,17 @@ class App {
     this.currentPath = targetPath;
     this.selectedFiles.clear();
 
-    // UI
+    // 導覽歷史
+    if (pushHistory) {
+      // 清除 forward 歷史
+      if (this.navIndex < this.navHistory.length - 1) {
+        this.navHistory = this.navHistory.slice(0, this.navIndex + 1);
+      }
+      this.navHistory.push(targetPath);
+      this.navIndex = this.navHistory.length - 1;
+    }
+
+    // UI reset
     this.elBtnScan.classList.add('hide');
     this.elBtnCancel.classList.remove('hide');
     this.elProgressCard.classList.remove('hide');
@@ -398,17 +507,21 @@ class App {
     }
     this.stopScan();
 
-    this.largestFiles = data.largestFiles || [];
+    this.allLargestFiles = data.largestFiles || [];
+
+    // 儲存歷史
+    this.saveScanHistory(this.currentPath, data.totalSize);
 
     // 導覽列
     this.elNavBar.classList.remove('hide');
     this.elNavCurrentPath.textContent = this.currentPath;
+    this.updateNavButtons();
 
-    // 先顯示結果區，讓 DOM layout 計算完成
+    // 結果區
     this.elResultsArea.classList.remove('hide');
     this.elResultsArea.classList.add('fade-in');
 
-    // 圓餅圖（延遲一幀確保 layout 完成）
+    // 圓餅圖
     requestAnimationFrame(() => {
       if (!this.pieChart) {
         this.pieChart = new PieChart('pie-chart');
@@ -422,8 +535,12 @@ class App {
     // 中心數字
     this.elChartTotal.textContent = formatSize(data.totalSize);
 
-    // 十大巨無霸
-    this.renderLargestFiles();
+    // 大檔案：重設篩選，回到第一頁
+    this.minSizeFilter = 0;
+    document.querySelectorAll('.filter-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.min === '0');
+    });
+    this.applyFilter();
 
     this.showToast(`分析完成！共 ${data.scannedFiles.toLocaleString()} 個檔案，${formatSize(data.totalSize)}`, 'success');
   }
@@ -447,19 +564,55 @@ class App {
     }
   }
 
-  // ===== 十大巨無霸檔案 =====
-  renderLargestFiles() {
-    this.elFilesList.innerHTML = '';
+  // ===== 篩選 =====
+  setMinSizeFilter(minBytes) {
+    this.minSizeFilter = minBytes;
+    this.applyFilter();
+  }
+
+  applyFilter() {
+    if (this.minSizeFilter > 0) {
+      this.filteredFiles = this.allLargestFiles.filter(f => f.size >= this.minSizeFilter);
+    } else {
+      this.filteredFiles = [...this.allLargestFiles];
+    }
+    this.currentPage = 0;
     this.selectedFiles.clear();
     this.elSelectAllCb.checked = false;
     this.elBtnDeleteSelected.disabled = true;
+    this.elFilterCount.textContent = `共 ${this.filteredFiles.length} 個檔案`;
+    this.renderCurrentPage();
+  }
 
-    if (!this.largestFiles.length) {
-      this.elFilesList.innerHTML = '<div class="files-empty">此資料夾沒有檔案</div>';
+  // ===== 分頁 =====
+  get totalPages() {
+    return Math.max(1, Math.ceil(this.filteredFiles.length / this.pageSize));
+  }
+
+  goPage(page) {
+    if (page < 0 || page >= this.totalPages) return;
+    this.currentPage = page;
+    this.selectedFiles.clear();
+    this.elSelectAllCb.checked = false;
+    this.elBtnDeleteSelected.disabled = true;
+    this.renderCurrentPage();
+  }
+
+  renderCurrentPage() {
+    const start = this.currentPage * this.pageSize;
+    const end = Math.min(start + this.pageSize, this.filteredFiles.length);
+    const pageFiles = this.filteredFiles.slice(start, end);
+
+    this.elFilesList.innerHTML = '';
+
+    if (!this.filteredFiles.length) {
+      this.elFilesList.innerHTML = '<div class="files-empty">沒有符合條件的檔案</div>';
+      this.updatePagination();
       return;
     }
 
-    this.largestFiles.forEach((file, idx) => {
+    pageFiles.forEach((file, localIdx) => {
+      const globalIdx = start + localIdx;
       const item = document.createElement('div');
       item.className = 'file-item';
 
@@ -468,10 +621,10 @@ class App {
 
       item.innerHTML = `
         <label class="checkbox-label file-cb">
-          <input type="checkbox" data-index="${idx}">
+          <input type="checkbox" data-global-index="${globalIdx}">
           <span class="checkmark"></span>
         </label>
-        <span class="file-rank">${idx + 1}</span>
+        <span class="file-rank">${globalIdx + 1}</span>
         <span class="file-type-icon">${typeIcon}</span>
         <div class="file-info">
           <div class="file-name" title="${this.escapeHtml(file.name)}">${this.escapeHtml(file.name)}</div>
@@ -488,7 +641,8 @@ class App {
       `;
 
       const cb = item.querySelector('input[type="checkbox"]');
-      cb.addEventListener('change', () => this.onFileCheckChange(idx, cb.checked));
+      cb.checked = this.selectedFiles.has(globalIdx);
+      cb.addEventListener('change', () => this.onFileCheckChange(globalIdx, cb.checked));
 
       const locateBtn = item.querySelector('.btn-locate');
       locateBtn.addEventListener('click', (e) => {
@@ -498,6 +652,15 @@ class App {
 
       this.elFilesList.appendChild(item);
     });
+
+    this.updatePagination();
+  }
+
+  updatePagination() {
+    const total = this.totalPages;
+    this.elBtnPagePrev.disabled = this.currentPage <= 0;
+    this.elBtnPageNext.disabled = this.currentPage >= total - 1;
+    this.elPageInfo.textContent = `第 ${this.currentPage + 1} 頁 / 共 ${total} 頁`;
   }
 
   getFileTypeIcon(ext) {
@@ -521,21 +684,32 @@ class App {
     return div.innerHTML;
   }
 
-  onFileCheckChange(idx, checked) {
+  onFileCheckChange(globalIdx, checked) {
     if (checked) {
-      this.selectedFiles.add(idx);
+      this.selectedFiles.add(globalIdx);
     } else {
-      this.selectedFiles.delete(idx);
+      this.selectedFiles.delete(globalIdx);
     }
     this.elBtnDeleteSelected.disabled = this.selectedFiles.size === 0;
-    this.elSelectAllCb.checked = this.selectedFiles.size === this.largestFiles.length;
+
+    // 全選 checkbox 狀態
+    const start = this.currentPage * this.pageSize;
+    const end = Math.min(start + this.pageSize, this.filteredFiles.length);
+    let allChecked = true;
+    for (let i = start; i < end; i++) {
+      if (!this.selectedFiles.has(i)) { allChecked = false; break; }
+    }
+    this.elSelectAllCb.checked = allChecked;
   }
 
   toggleSelectAll() {
     const isChecked = this.elSelectAllCb.checked;
+    const start = this.currentPage * this.pageSize;
+    const end = Math.min(start + this.pageSize, this.filteredFiles.length);
+
     this.elFilesList.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
       cb.checked = isChecked;
-      const idx = parseInt(cb.dataset.index);
+      const idx = parseInt(cb.dataset.globalIndex);
       if (isChecked) this.selectedFiles.add(idx);
       else this.selectedFiles.delete(idx);
     });
@@ -548,7 +722,8 @@ class App {
     const list = $('#confirm-file-list');
     list.innerHTML = '';
     for (const idx of this.selectedFiles) {
-      const file = this.largestFiles[idx];
+      const file = this.filteredFiles[idx];
+      if (!file) continue;
       const li = document.createElement('li');
       li.innerHTML = `<strong>${this.escapeHtml(file.name)}</strong> <span class="confirm-size">(${formatSize(file.size)})</span>`;
       list.appendChild(li);
@@ -563,7 +738,8 @@ class App {
   async executeDelete() {
     const files = [];
     for (const idx of this.selectedFiles) {
-      files.push(this.largestFiles[idx].path);
+      const f = this.filteredFiles[idx];
+      if (f) files.push(f.path);
     }
     this.closeConfirmModal();
 
@@ -596,6 +772,25 @@ class App {
   }
 
   // ===== 導覽 =====
+  updateNavButtons() {
+    this.elBtnNavBack.disabled = this.navIndex <= 0;
+    this.elBtnNavForward.disabled = this.navIndex >= this.navHistory.length - 1;
+  }
+
+  navigateBack() {
+    if (this.navIndex <= 0) return;
+    this.navIndex--;
+    this.elFolderPath.value = this.navHistory[this.navIndex];
+    this.startScan(false); // 不 push 歷史
+  }
+
+  navigateForward() {
+    if (this.navIndex >= this.navHistory.length - 1) return;
+    this.navIndex++;
+    this.elFolderPath.value = this.navHistory[this.navIndex];
+    this.startScan(false);
+  }
+
   navigateToParent() {
     const parts = this.currentPath.replace(/\\/g, '/').split('/').filter(Boolean);
     if (parts.length <= 1) return;
@@ -604,6 +799,15 @@ class App {
     if (parent.length === 2 && parent[1] === ':') parent += '\\';
     this.elFolderPath.value = parent;
     this.startScan();
+  }
+
+  navigateToRoot() {
+    // 取得目前路徑的磁碟根目錄，例如 C:\
+    const match = this.currentPath.match(/^([A-Za-z]):/);
+    if (match) {
+      this.elFolderPath.value = match[1].toUpperCase() + ':\\';
+      this.startScan();
+    }
   }
 
   // ===== 檔案總管定位 =====

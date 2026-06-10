@@ -342,7 +342,13 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         if (process.platform === 'win32') {
-          spawn('explorer.exe', [`/select,${filePath}`], { detached: true, stdio: 'ignore' });
+          // 確保路徑中的反斜線正常（收攏多餘的反斜線），並包裹雙引號以支援含有空格的路徑
+          const normalizedPath = path.normalize(filePath);
+          spawn('explorer.exe', [`/select,"${normalizedPath}"`], { 
+            detached: true, 
+            stdio: 'ignore',
+            windowsVerbatimArguments: true 
+          });
         }
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ success: true }));

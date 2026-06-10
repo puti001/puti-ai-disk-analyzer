@@ -624,8 +624,8 @@ function renderLargestFiles(files) {
     item.style.alignItems = 'center';
     item.style.gap = '10px';
     
-    // Windows 反斜線安全處理，防範 JSON 傳遞時字元逸出問題
-    const safePath = file.path.replace(/\\/g, '\\\\');
+    // 使用原始的絕對路徑，不需要將反斜線加倍，以免造成 explorer 定位失敗
+    const safePath = file.path;
     
     item.innerHTML = `
       <div class="legend-left" style="overflow: hidden; flex: 1;">

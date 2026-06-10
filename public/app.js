@@ -72,6 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initEventListeners();
   fetchCurrentWorkingDirectory();
   fetchAvailableDrives();
+  startHeartbeat(); // 啟動心跳發送以證明前端分頁仍開啟
 });
 
 // 事件綁定
@@ -867,4 +868,15 @@ function drillDown(subfolderName) {
   
   folderPathInput.value = newPath;
   startScan();
+}
+
+// 心跳機制，定時向後端發送訊號以證明前端分頁仍開啟
+function startHeartbeat() {
+  setInterval(async () => {
+    try {
+      await fetch('/api/heartbeat');
+    } catch (err) {
+      console.warn('心跳發送失敗，伺服器可能已關閉');
+    }
+  }, 5000); // 每 5 秒發送一次
 }

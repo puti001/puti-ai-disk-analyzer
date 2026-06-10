@@ -5,6 +5,7 @@ const url = require('url');
 const { exec, spawn } = require('child_process');
 
 const PORT = 3000;
+let lastHeartbeatTime = Date.now();
 
 // 檔案類型定義對照表
 const TYPE_MAP = {
@@ -293,6 +294,14 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // 1.15 心跳接收 API (供前端分頁定期發送，證明前端仍然開啟)
+  if (pathname === '/api/heartbeat') {
+    lastHeartbeatTime = Date.now();
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ status: 'ok' }));
+    return;
+  }
+
   // 1.5 取得本機可用磁碟機 API (僅限 Windows，其他平台預設回傳 '/')
   if (pathname === '/api/drives' && req.method === 'GET') {
     try {
@@ -458,3 +467,21 @@ server.listen(PORT, () => {
     console.warn('無法自動開啟瀏覽器，請手動打開網址。', err);
   }
 });
+
+// 啟動心跳檢查機制，若長時間無前端連線，則自動關閉程式，防範背景常駐佔用資源
+const HEARTBEAT_TIMEOUT = 12000; // 12秒無心跳則判定關閉
+const GRACE_PERIOD = 30000; // 啟動前 30 秒為寬限期，不進行檢測（等待瀏覽器開啟）
+const startupTime = Date.now();
+
+setInterval(() => {
+  const now = Date.now();
+  if (now - startupTime < GRACE_PERIOD) {
+    // 在啟動寬限期內，持續重置心跳時間
+    lastHeartbeatTime = now;
+    return;
+  }
+  if (now - lastHeartbeatTime > HEARTBEAT_TIMEOUT) {
+    console.log('偵測到所有網頁端均已關閉（無心跳訊號），自動關閉服務...');
+    process.exit(0);
+  }
+}, 5000); // 每 5 秒檢查一次
